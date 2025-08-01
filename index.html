@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aspecta Passport - Solana 地址资格批量查询</title>
+<meta name="color-scheme" content="light dark">
+<style>
+:root{
+  --bg:#f9fafb;--card:#fff;--text:#1f2937;--sub:#6b7280;
+  --primary:#2563eb;--ok:#16a34a;--err:#dc2626;--border:#e5e7eb;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#1e293b;--card:#334155;--text:#f3f4f6;--sub:#9ca3af;--border:#475569}
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,'Segoe UI','PingFang SC',sans-serif}
+body{background:var(--bg);color:var(--text);line-height:1.5;padding:20px}
+h1{font-size:1.3rem;text-align:center;margin-bottom:12px;color:var(--primary)}
+#panel{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+textarea{height:160px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card);resize:vertical}
+input,button{padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text)}
+button{background:var(--primary);color:#fff;border:none;cursor:pointer}
+button:hover{opacity:.9}
+#summary{font-size:.92rem;color:var(--sub)}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin-top:4px}
+th,td{border:1px solid var(--border);padding:6px 4px;text-align:center;word-break:break-all}
+thead{background:var(--card)}
+tbody tr:nth-child(odd){background:rgba(0,0,0,.03)}
+.status-ok   {color:var(--ok)}
+.status-bind,
+.status-err  {color:var(--err)}
+</style>
+</head>
+<body>
+<h1>Aspecta Passport - Solana 地址资格批量查询</h1>
+
+<div id="panel">
+  <textarea id="addrInput" placeholder="一行一个 Solana 地址"></textarea>
+  <input id="tokenInput" placeholder="Aspecta Bearer Token (必填)">
+  <button id="startBtn">开始查询</button>
+  <div id="summary">输入地址数量 0 个 | 可绑定 0 个 | 已被占用 0 个</div>
+
+  <table>
+    <thead><tr><th>#</th><th>地址</th><th>状态</th><th>说明 / 错误信息</th></tr></thead>
+    <tbody id="resultBody"></tbody>
+  </table>
+</div>
+
+<script>
+const API_URL = '/api/aspecta';             // 走同域代理
+
+async function checkAddr(addr, token){
+  const fd = new FormData();
+  fd.append('solana_address', addr);
+
+  const res = await fetch(API_URL, {
+    method : 'POST',
+    headers: { 'Authorization':'Bearer '+token },
+    body   : fd
+  });
+
+  const txt = await res.text();
+  if (res.ok) return { ok:true,  msg:'可绑定' };
+
+  if (res.status===400 && /bind by other user/i.test(txt))
+        return { ok:false, bind:true,  msg:'已被其他账户绑定' };
+
+  return { ok:false, bind:false, msg:`${res.status} ${txt||'未知错误'}` };
+}
+
+function addRow(i, addr, cls, stat, msg){
+  const tr=document.createElement('tr');
+  tr.innerHTML=`<td>${i}</td><td>${addr}</td><td class="${cls}">${stat}</td><td>${msg}</td>`;
+  document.getElementById('resultBody').appendChild(tr);
+}
+
+document.getElementById('startBtn').addEventListener('click', async ()=>{
+  const raw   = document.getElementById('addrInput').value.trim();
+  const token = document.getElementById('tokenInput').value.trim();
+  if(!raw)  return alert('请输入地址');
+  if(!token) return alert('请填写 Aspecta Token');
+
+  const addrs=[...new Set(raw.split(/\s+/).filter(Boolean))];
+  const tbody=document.getElementById('resultBody');
+  tbody.innerHTML='';
+  let okCnt=0, bindCnt=0;
+
+  document.getElementById('summary').textContent=
+    `输入地址数量 ${addrs.length} 个 | 查询中...`;
+
+  for(let i=0;i<addrs.length;i++){
+    const addr=addrs[i];
+    let cls='status-err', stat='错误', msg='-';
+    try{
+      const r=await checkAddr(addr,token);
+      if(r.ok){cls='status-ok';stat='✅ 可绑定';msg=r.msg;okCnt++;}
+      else if(r.bind){cls='status-bind';stat='❌ 已被占用';msg=r.msg;bindCnt++;}
+      else{msg=r.msg;}
+    }catch(e){msg=e.message;}
+    addRow(i+1,addr,cls,stat,msg);
+  }
+
+  document.getElementById('summary').textContent=
+    `输入地址数量 ${addrs.length} 个 | 可绑定 ${okCnt} 个 | 已被占用 ${bindCnt} 个`;
+});
+</script>
+</body>
+</html>
